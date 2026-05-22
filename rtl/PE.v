@@ -32,14 +32,16 @@ module PE(
     output  signed  [7:0]   a_out,
     output  signed  [7:0]   b_out,
     output  signed  [31:0]  c_out,         // Q1.31 : 1 bit for sign, 31 bits for fraction
-    output                  valid_out      // and b are multiplied => 8 bits * 8 bits = 16 bits,                                        // and then accumulated => 16 bits + 16 bits + ... = 32 bits 
+    output  reg             valid_out      // and b are multiplied => 8 bits * 8 bits = 16 bits,                                        // and then accumulated => 16 bits + 16 bits + ... = 32 bits 
 );
 
-
-reg                 valid_reg, init_reg;
+//======register pipeline 1=============
+reg                 valid_reg_1, init_reg_1;
 reg signed [7:0]    a_reg, b_reg;
 reg signed [31:0]   acc;
-
+//======register pipeline 2=============
+reg valid_reg_2, init_reg_2;
+reg signed [15:0]   mult;
 
 
 
@@ -47,38 +49,46 @@ reg signed [31:0]   acc;
 always @(posedge clk) begin
 
     if (rst) begin
-        a_reg       <= 0;             
-        b_reg       <= 0;
-        acc         <= 0;
-        valid_reg   <= 0;
-        init_reg    <= 0;
+    
+        a_reg         <= 0;             
+        b_reg         <= 0;
+        acc           <= 0;
+        valid_reg_1   <= 0;
+        init_reg_1    <= 0;
+        mult          <= 0;
+        valid_reg_2   <= 0;
+        init_reg_2    <= 0;
+        valid_out     <= 0;
     end 
                                           //clk 1: PE receive a, b
                                           //clk 2: PE compute acc = acc + ab => delay 1 clk
     else if(en) begin
 
-        a_reg       <= a;                     //  <= = update after clock edge (parallel)
-        b_reg       <= b;                     // clk = 0: update a_reg, b_reg; clk = 1: update acc
-        valid_reg   <= valid_in;
-        init_reg    <= init;
+    // stage 1: input register
+        a_reg        <= a;                     //  <= = update after clock edge (parallel)
+        b_reg        <= b;                     // clk = 0: update a_reg, b_reg; clk = 1: update acc
+        valid_reg_1  <= valid_in;
+        init_reg_1   <= init;
+        valid_out <= valid_reg_2;
+    // stage 2: compute a*b
+        
+        mult        <= $signed(a_reg) * $signed(b_reg);
+        valid_reg_2 <= valid_reg_1;
+        init_reg_2  <= init_reg_1;
 
-        if(valid_reg) begin
+    //stage 3: MAC
+        if(valid_reg_2) begin
 
-            if(init_reg) 
-                acc <= $signed(a_reg) * $signed(b_reg);
-            
+            if(init_reg_2) 
+                acc <= mult;         
             else 
-                acc <= acc + ($signed(a_reg) * $signed(b_reg)); 
-
+                acc <= acc + mult; 
         end
     end
-
 end 
 
-assign valid_out = valid_reg;
 assign a_out = a_reg;
 assign b_out = b_reg;
 assign c_out = acc;         
 
 endmodule
-
